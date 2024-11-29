@@ -11,7 +11,7 @@ WORKDIR /
 COPY . .
 
 # Disable Go Modules
-ENV GO111MODULE=off
+ENV GO111MODULE=on
 
 # Build the Go app
 RUN go build -ldflags "-s -w" -o main .
