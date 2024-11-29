@@ -1,4 +1,4 @@
-kkpackage handler
+kpackage handler
 
 import (
 	"github.com/gofiber/fiber/v2"
@@ -25,7 +25,7 @@ func Main(Context openruntimes.Context) openruntimes.Response {
 	// Initialize Fiber app
 	app := fiber.New()
 
-	// Endpoint: /ping
+	// Define endpoint: /ping
 	app.Get("/ping", func(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusOK).JSON(ApiResponse{
 			Code:    fiber.StatusOK,
@@ -34,7 +34,7 @@ func Main(Context openruntimes.Context) openruntimes.Response {
 		})
 	})
 
-	// Endpoint: /user
+	// Define endpoint: /user
 	app.Get("/user", func(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusOK).JSON(ApiResponse{
 			Code:   fiber.StatusOK,
@@ -43,43 +43,34 @@ func Main(Context openruntimes.Context) openruntimes.Response {
 		})
 	})
 
-	// Convert Appwrite request to Fiber request
-	req := fiber.AcquireRequest()
-	defer fiber.ReleaseRequest(req)
+	// Fiber context handling
+	// Create a Fiber context for the incoming Appwrite request
+	c := app.AcquireCtx(&fiber.Ctx{})
+	defer app.ReleaseCtx(c)
 
-	req.Header.SetMethod(Context.Req.Method)
-	req.SetRequestURI(Context.Req.Url)
+	// Map Appwrite request data to Fiber context
+	c.Request().Header.SetMethod(Context.Req.Method)
+	c.Request().SetRequestURI(Context.Req.Url)
 	for key, value := range Context.Req.Headers {
-		req.Header.Set(key, value)
+		c.Request().Header.Set(key, value)
 	}
-	bodyBytes := Context.Req.Body().([]byte)
-	req.SetBody(bodyBytes)
-
-	// Prepare Fiber response
-	res := fiber.AcquireResponse()
-	defer fiber.ReleaseResponse(res)
-
-	// Execute Fiber handler
-	err := app.Test(req, res)
-	if err != nil {
-		// Error handling
-		return Context.Res.Json(ApiResponse{
-			Code:    500,
-			Status:  "fail",
-			Message: "Internal Server Error",
-		})
+	if bodyBytes, ok := Context.Req.Body().([]byte); ok {
+		c.Request().SetBody(bodyBytes)
 	}
+
+	// Handle the request using Fiber
+	app.Handler()(c)
 
 	// Convert Fiber response to Appwrite response
 	headers := make(map[string]string)
-	res.Header.VisitAll(func(k, v []byte) {
+	c.Response().Header.VisitAll(func(k, v []byte) {
 		headers[string(k)] = string(v)
 	})
 
 	return openruntimes.Response{
-		Body:    res.Body(),
+		Body:    string(c.Response().Body()),
 		Headers: headers,
-		Status:  res.StatusCode(),
+		Status:  c.Response().StatusCode(),
 	}
 }
 
