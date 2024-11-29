@@ -1,4 +1,4 @@
-package main
+package handler
 
 import (
 	"io"
@@ -13,7 +13,7 @@ var client = http.Client{
 	Timeout: 10 * time.Second,
 }
 
-func main() {
+func Main() {
 	app := fiber.New()
 
 	app.Get("/", func(c *fiber.Ctx) error {
