@@ -1,55 +1,46 @@
-package handler
+kkpackage handler
 
 import (
-	"bytes"
-	"io"
-	"log"
-	"net/http"
-	"time"
-
 	"github.com/gofiber/fiber/v2"
 	"github.com/open-runtimes/types-for-go/v4/openruntimes"
 )
 
-// Custom HTTP client
-var client = http.Client{
-	Timeout: 10 * time.Second,
+// Struct for API response
+type ApiResponse struct {
+	Code    int         `json:"code"`
+	Status  string      `json:"status"`
+	Message string      `json:"message,omitempty"`
+	Data    interface{} `json:"data,omitempty"`
+}
+
+// Dummy user data
+var dummyUser = map[string]interface{}{
+	"id":       1,
+	"name":     "John Doe",
+	"email":    "johndoe@example.com",
+	"username": "johndoe",
 }
 
 func Main(Context openruntimes.Context) openruntimes.Response {
 	// Initialize Fiber app
 	app := fiber.New()
 
-	// Define the route handler
-	app.Get("/", func(c *fiber.Ctx) error {
-		// Make an external HTTP request
-		resp, err := client.Get("https://dummyjson.com/products/1")
-		if err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(&fiber.Map{
-				"success": false,
-				"error":   err.Error(),
-			})
-		}
-		defer resp.Body.Close()
+	// Endpoint: /ping
+	app.Get("/ping", func(c *fiber.Ctx) error {
+		return c.Status(fiber.StatusOK).JSON(ApiResponse{
+			Code:    fiber.StatusOK,
+			Status:  "success",
+			Message: "pong",
+		})
+	})
 
-		// Check the HTTP status
-		if resp.StatusCode != http.StatusOK {
-			return c.Status(resp.StatusCode).JSON(&fiber.Map{
-				"success": false,
-				"error":   "Failed to fetch data",
-			})
-		}
-
-		// Copy the response body
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(&fiber.Map{
-				"success": false,
-				"error":   err.Error(),
-			})
-		}
-
-		return c.Status(http.StatusOK).Send(body)
+	// Endpoint: /user
+	app.Get("/user", func(c *fiber.Ctx) error {
+		return c.Status(fiber.StatusOK).JSON(ApiResponse{
+			Code:   fiber.StatusOK,
+			Status: "success",
+			Data:   dummyUser,
+		})
 	})
 
 	// Convert Appwrite request to Fiber request
@@ -68,21 +59,27 @@ func Main(Context openruntimes.Context) openruntimes.Response {
 	res := fiber.AcquireResponse()
 	defer fiber.ReleaseResponse(res)
 
-	// Execute Fiber app handler
-	err := app.Test(&http.Request{
-		Method: string(req.Header.Method()),
-		URL:    req.URI(),
-		Body:   io.NopCloser(bytes.NewReader(req.Body())),
-	}, res)
+	// Execute Fiber handler
+	err := app.Test(req, res)
 	if err != nil {
-		log.Println("Error handling request:", err)
-		return Context.Res.Text("Internal Server Error", 500)
+		// Error handling
+		return Context.Res.Json(ApiResponse{
+			Code:    500,
+			Status:  "fail",
+			Message: "Internal Server Error",
+		})
 	}
 
 	// Convert Fiber response to Appwrite response
+	headers := make(map[string]string)
+	res.Header.VisitAll(func(k, v []byte) {
+		headers[string(k)] = string(v)
+	})
+
 	return openruntimes.Response{
 		Body:    res.Body(),
-		Headers: res.Header.Header(),
+		Headers: headers,
 		Status:  res.StatusCode(),
 	}
 }
+
