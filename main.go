@@ -42,5 +42,5 @@ func main() {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	log.Fatal(app.Listen(":3000"))
+	log.Fatal(app.Listen(":8080"))
 }
