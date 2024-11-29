@@ -1,10 +1,10 @@
 package handler
 
 import (
+	"bytes"
 	"io"
 	"log"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -22,6 +22,7 @@ func Main(Context openruntimes.Context) openruntimes.Response {
 
 	// Define the route handler
 	app.Get("/", func(c *fiber.Ctx) error {
+		// Make an external HTTP request
 		resp, err := client.Get("https://dummyjson.com/products/1")
 		if err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(&fiber.Map{
@@ -29,8 +30,9 @@ func Main(Context openruntimes.Context) openruntimes.Response {
 				"error":   err.Error(),
 			})
 		}
-
 		defer resp.Body.Close()
+
+		// Check the HTTP status
 		if resp.StatusCode != http.StatusOK {
 			return c.Status(resp.StatusCode).JSON(&fiber.Map{
 				"success": false,
@@ -38,40 +40,49 @@ func Main(Context openruntimes.Context) openruntimes.Response {
 			})
 		}
 
-		if _, err := io.Copy(c.Response().BodyWriter(), resp.Body); err != nil {
+		// Copy the response body
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(&fiber.Map{
 				"success": false,
 				"error":   err.Error(),
 			})
 		}
-		return nil
+
+		return c.Status(http.StatusOK).Send(body)
 	})
 
-	// Convert Appwrite request to Fiber context
-	req := fiber.Request{}
-	req.SetRequestURI(Context.Req.URL)
+	// Convert Appwrite request to Fiber request
+	req := fiber.AcquireRequest()
+	defer fiber.ReleaseRequest(req)
+
 	req.Header.SetMethod(Context.Req.Method)
+	req.SetRequestURI(Context.Req.Url)
 	for key, value := range Context.Req.Headers {
 		req.Header.Set(key, value)
 	}
-	req.SetBody(Context.Req.Body)
+	bodyBytes := Context.Req.Body().([]byte)
+	req.SetBody(bodyBytes)
 
-	// Handle the request using Fiber
-	res := fiber.Response{}
-	err := app.Handler()(&req, &res)
+	// Prepare Fiber response
+	res := fiber.AcquireResponse()
+	defer fiber.ReleaseResponse(res)
+
+	// Execute Fiber app handler
+	err := app.Test(&http.Request{
+		Method: string(req.Header.Method()),
+		URL:    req.URI(),
+		Body:   io.NopCloser(bytes.NewReader(req.Body())),
+	}, res)
 	if err != nil {
 		log.Println("Error handling request:", err)
-		return Context.Res.Text("Internal Server Error", http.StatusInternalServerError)
+		return Context.Res.Text("Internal Server Error", 500)
 	}
 
 	// Convert Fiber response to Appwrite response
-	headers := make(map[string]string)
-	res.Header.VisitAll(func(key, value []byte) {
-		headers[string(key)] = string(value)
-	})
 	return openruntimes.Response{
-		Body:    string(res.Body()),
-		Headers: headers,
+		Body:    res.Body(),
+		Headers: res.Header.Header(),
 		Status:  res.StatusCode(),
 	}
 }
